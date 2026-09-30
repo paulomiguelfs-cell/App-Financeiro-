@@ -1,0 +1,11 @@
+{
+  "name": "app-financeiro",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Controle financeiro pessoal (PWA) com lançamentos por texto e voz",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "npx serve -l 5173 ."
+  }
+}
