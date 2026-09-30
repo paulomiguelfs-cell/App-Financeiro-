@@ -396,3 +396,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   content: ""; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-t);
   background: var(--bg); z-index: 30;
 }
+
+/* Compras no cartão do mês (tela Início) */
+.purchases { padding: 14px 16px 6px; margin-bottom: 0; }
+.purchases-total { display: grid; gap: 2px; padding-bottom: 10px; }
+.purchases-total b { font-size: 24px; letter-spacing: -.01em; }
+.purchase-card { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); text-align: left; }
+.purchase-card > svg { color: var(--text-3); width: 18px; height: 18px; }
+.purchase-card b { font-variant-numeric: tabular-nums; }
+.block { display: block; font-size: 11px; font-weight: 500; text-align: right; }
+.purchase-card .lg-dot { box-shadow: 0 0 0 1.5px var(--text-3); }

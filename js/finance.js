@@ -127,6 +127,23 @@ export const txMonth = (t) => (t.method === 'card' && t.invoice ? t.invoice : mo
 export const monthTransactions = (state, key) =>
   state.transactions.filter((t) => txMonth(t) === key);
 
+// Compras feitas no cartão dentro do mês (pela data da compra), independentemente da fatura.
+// Parceladas entram uma vez, pelo valor total, na 1ª parcela.
+export function cardPurchasesInMonth(state, key) {
+  const items = state.transactions
+    .filter((t) => t.method === 'card' && t.type === 'expense' && (!t.installment || t.installment === 1) && monthKey(t.date) === key)
+    .map((t) => ({ tx: t, value: t.total || t.amount }))
+    .sort((a, b) => b.tx.date.localeCompare(a.tx.date) || b.tx.createdAt - a.tx.createdAt);
+  const byCard = state.cards
+    .map((card) => {
+      const mine = items.filter((i) => i.tx.cardId === card.id);
+      return { card, count: mine.length, value: round2(mine.reduce((s, i) => s + i.value, 0)) };
+    })
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.value - a.value);
+  return { total: round2(items.reduce((s, i) => s + i.value, 0)), byCard, items };
+}
+
 export function monthSummary(state, key) {
   let income = 0, expense = 0;
   for (const t of monthTransactions(state, key)) {

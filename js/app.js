@@ -4,7 +4,7 @@ import {
 } from './util.js';
 import {
   emptyState, PALETTE, METHODS, buildTransactions, invoiceFor, currentInvoice, invoiceStatus, invoiceTransactions,
-  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
+  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, cardPurchasesInMonth, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
   lastMonths, normalizeState, toCSV,
 } from './finance.js';
 import { parseEntry } from './parser.js';
@@ -236,6 +236,8 @@ function viewHome() {
     <button type="button" class="mic-btn" data-action="voice" aria-label="Lançar por voz">${icon.mic}</button>
   </form>
 
+  ${S.cards.length ? cardPurchasesHTML() : ''}
+
   ${alerts.length ? `<section class="section">
     <div class="section-head"><h2>Orçamentos</h2></div>
     ${alerts.map((b) => `<div class="alert alert-${b.level}">${icon.alert}
@@ -262,6 +264,46 @@ function viewHome() {
     ${recent.length ? `<div class="list">${recent.map(txRow).join('')}</div>`
       : emptyBox('🧾', 'Nenhum lançamento neste mês', 'Toque no <b>+</b> ou no microfone e diga, por exemplo: <i>"gastei 50 reais no mercado no Nubank"</i>.')}
   </section>`;
+}
+
+// Quadro "Compras no cartão em {mês}": o que foi comprado no mês, antes de a fatura vencer.
+function cardPurchasesHTML() {
+  const r = cardPurchasesInMonth(S, month);
+  const mName = monthLabel(month, false).toLowerCase();
+  return `<section class="section">
+    <div class="section-head"><h2>Compras no cartão em ${mName}</h2>${r.items.length ? '<button class="link" data-action="card-purchases">Ver compras</button>' : ''}</div>
+    <div class="panel purchases">
+      <div class="purchases-total"><span class="muted small">Total comprado no mês</span><b>${money(r.total)}</b>
+        <span class="muted small">${r.items.length ? `${r.items.length} compra(s) · entram nas próximas faturas` : 'Nenhuma compra no cartão neste mês'}</span></div>
+      ${r.byCard.map((x) => `<button class="purchase-card" data-action="open-card" data-id="${x.card.id}">
+        <span class="lg-dot" style="--c:${x.card.color}"></span>
+        <span class="grow">${esc(x.card.name)}<small class="muted"> · ${x.count} compra(s)</small></span>
+        <b>${money(x.value)}</b>${icon.right}</button>`).join('')}
+    </div>
+  </section>`;
+}
+
+function openCardPurchasesSheet() {
+  const r = cardPurchasesInMonth(S, month);
+  const sheet = openSheet(`
+    ${sheetHead('Compras no cartão', `${monthLabel(month)} · total ${money(r.total)} · parceladas pelo valor total`)}
+    <div class="list">${r.items.map(({ tx: t, value }) => {
+      const c = catById(t.categoryId) || { icon: '❔', name: 'Sem categoria', color: PALETTE[8] };
+      const card = cardById(t.cardId);
+      return `<button class="tx" data-tx="${t.id}">
+        <span class="tx-icon" style="--c:${c.color}">${c.icon}</span>
+        <span class="tx-main"><span class="tx-title">${esc(t.description)}</span>
+          <span class="tx-sub">${shortDate(t.date)} · ${esc(card?.name || 'Cartão')} · fatura ${monthLabel(t.invoice, false).toLowerCase()}</span></span>
+        <span class="tx-amt expense">${money(value)}${t.installments ? `<small class="muted block">${t.installments}x de ${money(t.amount)}</small>` : ''}</span>
+      </button>`;
+    }).join('')}</div>`, { className: 'tall' });
+  sheet.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tx]');
+    if (!b) return;
+    const t = S.transactions.find((x) => x.id === b.dataset.tx);
+    sheet.close();
+    if (t) openTxSheet({ tx: t });
+  });
 }
 
 // ============================================================
@@ -897,6 +939,7 @@ const actions = {
   'tx-type': (el) => { txFilter.type = el.dataset.type; render(); },
   'tx-cat-clear': () => { txFilter.categoryId = null; render(); },
   'filter-cat': (el) => { txFilter.categoryId = el.dataset.id; txFilter.type = 'all'; go('tx'); },
+  'card-purchases': () => openCardPurchasesSheet(),
   'new-card': () => openCardSheet(),
   'edit-card': (el) => openCardSheet(cardById(el.dataset.id)),
   'open-card': (el) => { cardView = { id: el.dataset.id, invoice: null }; go('card'); },
