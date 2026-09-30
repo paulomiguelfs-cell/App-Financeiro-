@@ -44,3 +44,18 @@ test('resumo, limite e orçamento', () => {
   const b = budgetStatus(s, '2026-09');
   assert.equal(b[0].level, 'warn');
 });
+
+test('compra no crédito conta como despesa no mês da compra', () => {
+  const s = emptyState('Paulo');
+  const latam = { id: 'lt', name: 'Latam Black', closingDay: 20, dueDay: 28, limit: 50000 };
+  s.cards.push(latam);
+  s.transactions.push(
+    ...buildTransactions({ type: 'expense', amount: 10.8, description: 'Café', categoryId: 'c', date: '2026-09-29', method: 'card', cardId: 'lt' }, [latam]),
+    ...buildTransactions({ type: 'expense', amount: 300, description: 'Tênis', categoryId: 'c', date: '2026-09-29', method: 'card', cardId: 'lt', installments: 3 }, [latam]),
+    ...buildTransactions({ type: 'expense', amount: 50, description: 'Mercado', categoryId: 'c', date: '2026-09-29', method: 'pix' }, [latam]),
+  );
+  // Setembro: café + 1ª parcela + Pix; a fatura continua sendo a de outubro.
+  assert.deepEqual(monthSummary(s, '2026-09'), { income: 0, expense: 160.8, balance: -160.8 });
+  assert.deepEqual(monthSummary(s, '2026-10'), { income: 0, expense: 100, balance: -100 });
+  assert.equal(s.transactions[0].invoice, '2026-10');
+});

@@ -120,8 +120,10 @@ export function buildTransactions(input, cards) {
   return out;
 }
 
-// Mês de competência: compras no crédito contam no mês da fatura; o resto, na data.
-export const txMonth = (t) => (t.method === 'card' && t.invoice ? t.invoice : monthKey(t.date));
+// Todo lançamento conta no mês da sua data (compra), seja crédito, Pix, débito ou dinheiro.
+// Parcelas têm a data avançada mês a mês, então cada parcela conta no seu mês.
+// A fatura do cartão é controlada à parte (campo invoice).
+export const txMonth = (t) => monthKey(t.date);
 
 export const monthTransactions = (state, key) =>
   state.transactions.filter((t) => txMonth(t) === key);

@@ -390,3 +390,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   color: var(--text); background: color-mix(in srgb, var(--warn) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); padding: 10px 12px; border-radius: 12px;
 }
+
+/* Faixa atrás da barra de status do iPhone (evita texto por baixo da hora/bateria ao rolar) */
+.shell::before {
+  content: ""; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-t);
+  background: var(--bg); z-index: 30;
+}
