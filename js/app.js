@@ -8,7 +8,7 @@ import {
   lastMonths, normalizeState, toCSV,
 } from './finance.js';
 import { parseEntry } from './parser.js';
-import { listen, stop as stopVoice, voiceSupported } from './voice.js';
+import { listen, stop as stopVoice, voiceSupported, isIOS, isStandalone } from './voice.js';
 import { donut, incomeExpenseBars, attachTooltips } from './charts.js';
 import { icon, openSheet, closeAllSheets, sheetHead, toast, choose, confirmDialog, download } from './ui.js';
 
@@ -332,7 +332,7 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
     <div class="sheet-actions">
       ${editing ? `<button class="btn btn-danger-ghost" data-act="delete">${icon.trash} Excluir</button>` : ''}
       <button class="btn btn-primary btn-lg grow" data-act="save">${icon.check} Salvar</button>
-    </div>`, { className: 'tall', onClose: () => { if (listening) stopVoice(); } });
+    </div>`, { className: 'tall', onClose: () => { if (listening) stopVoice(); clearTimeout(watchdog); } });
 
   const formEl = sheet.querySelector('#txform');
 
@@ -390,33 +390,58 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
 
   const mic = sheet.querySelector('#mic');
   const hint = sheet.querySelector('#smart-hint');
+  const setHint = (html, warn = false) => { hint.innerHTML = html; hint.classList.toggle('voice-warn', warn); };
+  const keyboardTip = isIOS()
+    ? 'Toque no campo acima e use o <b>microfone do teclado</b> 🎙️ para ditar.'
+    : 'Toque no campo acima e use o <b>microfone do teclado</b> (Gboard) para ditar.';
+  const voiceErrors = {
+    unsupported: `Este navegador não reconhece voz. ${keyboardTip}`,
+    'not-allowed': isIOS()
+      ? `O microfone foi bloqueado. No iPhone: <b>Ajustes → Apps → Safari → Microfone → Permitir</b>. ${keyboardTip}`
+      : `O microfone foi bloqueado. Libere em <b>Configurações → Apps → Chrome → Permissões → Microfone</b> e tente de novo.`,
+    'service-not-allowed': isIOS()
+      ? `O iPhone não liberou o reconhecimento de voz${isStandalone() ? ' no app instalado' : ''}. Verifique se <b>Ajustes → Siri → Ditado</b> está ativado. ${keyboardTip}`
+      : `O reconhecimento de voz não está disponível. ${keyboardTip}`,
+    'no-speech': 'Não ouvi nada. Toque no microfone e fale logo em seguida.',
+    'audio-capture': `Não encontrei o microfone (outro app pode estar usando). ${keyboardTip}`,
+    network: `O reconhecimento de voz precisa de internet. ${keyboardTip}`,
+    'language-not-supported': `Português não está disponível para voz neste aparelho. ${keyboardTip}`,
+    timeout: `O microfone não respondeu. ${keyboardTip}`,
+  };
+  let watchdog = null;
+  const finish = () => { listening = false; clearTimeout(watchdog); mic.classList.remove('listening'); };
+  // Chamada diretamente no toque do usuário: sem atrasos, senão o navegador bloqueia o microfone.
   const startVoice = () => {
     if (!voiceSupported()) {
-      toast('Seu navegador não tem reconhecimento de voz. Use o microfone do teclado.', 'error');
+      setHint(voiceErrors.unsupported, true);
       smart.focus();
       return;
     }
+    let started = false;
     listening = true;
     mic.classList.add('listening');
-    hint.textContent = 'Ouvindo… fale o lançamento.';
+    setHint('Ativando o microfone…');
     listen({
+      onStart: () => { started = true; setHint('🎙️ Ouvindo… fale o lançamento. Toque no microfone para parar.'); },
       onText: (t) => { smart.value = t; applyText(t); },
-      onEnd: () => {
-        listening = false;
-        mic.classList.remove('listening');
-        hint.textContent = smart.value ? 'Confira os campos e toque em Salvar.' : 'Toque no microfone para tentar de novo.';
+      onEnd: (t, failed) => {
+        finish();
+        if (failed) return;
+        if (t) setHint('Confira os campos e toque em <b>Salvar</b>.');
+        else setHint(voiceErrors['no-speech'], true);
       },
       onError: (err) => {
-        listening = false;
-        mic.classList.remove('listening');
-        const msg = { 'not-allowed': 'Permita o acesso ao microfone nas configurações do navegador.',
-          'no-speech': 'Não ouvi nada. Tente de novo.', network: 'O reconhecimento de voz precisa de internet.' }[err];
-        if (msg) toast(msg, 'error');
+        finish();
+        setHint(voiceErrors[err] || `Não foi possível usar a voz (${esc(err)}). ${keyboardTip}`, true);
       },
     });
+    // Alguns aparelhos ficam travados sem iniciar a escuta: desiste após 6 s.
+    watchdog = setTimeout(() => {
+      if (listening && !started) { stopVoice(); finish(); setHint(voiceErrors.timeout, true); }
+    }, 6000);
   };
   mic?.addEventListener('click', () => (listening ? stopVoice() : startVoice()));
-  if (voice) setTimeout(startVoice, 250);
+  if (voice) startVoice();
 
   // Campos manuais
   formEl.addEventListener('input', (e) => {

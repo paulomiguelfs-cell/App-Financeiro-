@@ -384,3 +384,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* Aviso de voz (motivo da falha + alternativa) */
+.smart-hint.voice-warn {
+  color: var(--text); background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); padding: 10px 12px; border-radius: 12px;
+}
