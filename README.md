@@ -21,8 +21,8 @@ App de controle financeiro para usar no celular, instalável na tela inicial (An
 
 ## Regras importantes
 
-- Todo gasto (crédito, Pix, débito ou dinheiro) conta como despesa no **mês da compra**. Compras parceladas contam uma parcela por mês.
-- Na aba Cartões, cada compra também entra na **fatura** correspondente (mês de vencimento). Compras feitas no dia do fechamento ou depois entram na fatura seguinte.
+- Compras no **cartão** contam como despesa no mês de **vencimento da fatura**. Compras feitas no dia do fechamento ou depois entram na fatura seguinte; parceladas contam uma parcela em cada fatura.
+- **Pix, débito e dinheiro** contam no mês em que o gasto foi feito.
 - Os dados **não saem do aparelho**. Se o navegador for limpo ou o celular trocado, só é possível recuperar com um backup exportado.
 - A senha **não pode ser recuperada**.
 

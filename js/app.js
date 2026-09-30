@@ -304,6 +304,7 @@ function viewTx() {
       `<button class="chip ${txFilter.type === k ? 'on' : ''}" data-action="tx-type" data-type="${k}">${l}</button>`).join('')}
     ${cat ? `<button class="chip on" data-action="tx-cat-clear">${cat.icon} ${esc(cat.name)} ${icon.x}</button>` : ''}
   </div>
+  <p class="muted small note">Compras no cartão aparecem no mês de vencimento da fatura.</p>
   <div id="tx-list">${txListHTML()}</div>`;
 }
 
