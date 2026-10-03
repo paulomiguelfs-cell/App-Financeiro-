@@ -32,7 +32,7 @@ export function defaultCategories() {
 export function emptyState(name = '') {
   return {
     version: 1,
-    settings: { name, theme: 'dark', lockMinutes: 3 },
+    settings: { name, theme: 'dark', lockMinutes: 3, initialBalance: 0 },
     categories: defaultCategories(),
     cards: [],
     transactions: [],
@@ -154,6 +154,24 @@ export function monthSummary(state, key) {
   return { income: round2(income), expense: round2(expense), balance: round2(income - expense) };
 }
 
+// Saldo que vem dos meses anteriores (o que sobrou ou faltou), como numa conta bancária.
+// Parte do saldo inicial informado em Ajustes e soma o resultado de todos os meses antes de `key`.
+export function openingBalance(state, key) {
+  let v = Number(state.settings?.initialBalance) || 0;
+  for (const t of state.transactions) {
+    if (txMonth(t) >= key) continue;
+    v += t.type === 'income' ? t.amount : -t.amount;
+  }
+  return round2(v);
+}
+
+// Resumo com o saldo acumulado: disponível = saldo anterior + receitas do mês − despesas do mês.
+export function accountSummary(state, key) {
+  const sum = monthSummary(state, key);
+  const opening = openingBalance(state, key);
+  return { ...sum, opening, available: round2(opening + sum.balance) };
+}
+
 // Composição das despesas do mês: gastos à vista (Pix, débito, dinheiro) pela data
 // + faturas dos cartões que vencem no mês.
 export function expenseBreakdown(state, key) {
@@ -230,7 +248,7 @@ export function normalizeState(s) {
   }
   return {
     version: 1,
-    settings: { name: '', theme: 'dark', lockMinutes: 3, ...(s.settings || {}) },
+    settings: { name: '', theme: 'dark', lockMinutes: 3, initialBalance: 0, ...(s.settings || {}) },
     categories: s.categories,
     cards: Array.isArray(s.cards) ? s.cards : [],
     transactions: s.transactions,

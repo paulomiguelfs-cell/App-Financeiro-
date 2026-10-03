@@ -4,7 +4,7 @@ import {
 } from './util.js';
 import {
   emptyState, PALETTE, METHODS, buildTransactions, invoiceFor, currentInvoice, invoiceStatus, invoiceTransactions,
-  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, cardPurchasesInMonth, expenseBreakdown, receivables, knownPeople, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
+  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, cardPurchasesInMonth, expenseBreakdown, receivables, knownPeople, accountSummary, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
   lastMonths, normalizeState, toCSV,
 } from './finance.js';
 import { parseEntry } from './parser.js';
@@ -210,6 +210,7 @@ const emptyBox = (emoji, title, text, action = '') => `
 // ============================================================
 function viewHome() {
   const sum = monthSummary(S, month);
+  const acc = accountSummary(S, month);
   const recent = monthTransactions(S, month).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 6);
   const alerts = budgetStatus(S, month).filter((b) => b.level !== 'ok');
   const hour = new Date().getHours();
@@ -222,10 +223,12 @@ function viewHome() {
   ${monthSwitch()}
 
   <section class="hero">
-    <p class="hero-label">Saldo do mês</p>
-    <p class="hero-value ${sum.balance < 0 ? 'neg' : ''}">${money(sum.balance)}</p>
+    <p class="hero-label">Disponível em conta</p>
+    <p class="hero-value ${acc.available < 0 ? 'neg' : ''}">${money(acc.available)}</p>
+    <p class="hero-sub">Saldo anterior ${money(acc.opening)} · resultado do mês ${money(acc.balance)}</p>
     <div class="hero-split">
-      <div><span class="pill-ico income">${icon.up}</span><span><small>Receitas</small><b>${money(sum.income)}</b></span></div>
+      <div><span class="pill-ico income">${icon.up}</span><span><small>Receitas</small><b>${money(acc.income + Math.max(0, acc.opening))}</b>
+        ${acc.opening > 0 ? `<em>${money(acc.income)} do mês + ${money(acc.opening)} do saldo anterior</em>` : ''}</span></div>
       <div><span class="pill-ico expense">${icon.down}</span><span><small>Despesas</small><b>${money(sum.expense)}</b></span></div>
     </div>
     ${S.cards.length ? (() => {
@@ -883,6 +886,8 @@ function viewSettings() {
   <section class="panel settings">
     <h2>Perfil</h2>
     <label class="field"><span>Seu nome</span><input id="set-name" value="${esc(S.settings.name)}"></label>
+    <label class="field"><span>Saldo inicial em conta (R$)</span><input id="set-initial" inputmode="decimal" placeholder="0,00" value="${formatMoneyInput(S.settings.initialBalance)}"></label>
+    <p class="muted small">Quanto você tinha em conta antes do primeiro lançamento. A partir dele, a sobra de cada mês passa para o mês seguinte.</p>
   </section>
   <section class="panel settings">
     <h2>Organização</h2>
@@ -1117,6 +1122,12 @@ document.addEventListener('submit', (e) => {
 document.addEventListener('change', async (e) => {
   if (!S) return;
   if (e.target.id === 'set-name') { S.settings.name = e.target.value.trim(); persist(); }
+  if (e.target.id === 'set-initial') {
+    S.settings.initialBalance = parseMoneyInput(e.target.value);
+    e.target.value = formatMoneyInput(S.settings.initialBalance);
+    persist();
+    toast('Saldo inicial atualizado');
+  }
   if (e.target.id === 'set-lock') { S.settings.lockMinutes = Number(e.target.value); persist(); }
   if (e.target.id === 'import-file') {
     const file = e.target.files[0];

@@ -115,3 +115,25 @@ test('a receber de terceiros: agora x parcelas futuras', async () => {
   assert.deepEqual(knownPeople(s), ['João', 'Maria']);
   assert.equal(monthSummary(s, '2026-10').expense, 80 + 100 + 50 + 999); // continua sendo despesa sua
 });
+
+test('saldo do mês passa para os meses seguintes (disponível em conta)', async () => {
+  const { accountSummary } = await import('../js/finance.js');
+  const s = emptyState('Paulo');
+  s.settings.initialBalance = 500;
+  s.cards.push(nu);
+  s.transactions.push(
+    ...buildTransactions({ type: 'income', amount: 8000, description: 'Salário', categoryId: 'c', date: '2026-09-05', method: 'pix' }, s.cards),
+    ...buildTransactions({ type: 'expense', amount: 3000, description: 'Aluguel', categoryId: 'c', date: '2026-09-10', method: 'pix' }, s.cards),
+    ...buildTransactions({ type: 'expense', amount: 600, description: 'Tênis', categoryId: 'c', date: '2026-09-01', method: 'card', cardId: 'nu', installments: 3 }, s.cards), // faturas 09,10,11
+    ...buildTransactions({ type: 'income', amount: 2000, description: 'Projeto', categoryId: 'c', date: '2026-10-08', method: 'pix' }, s.cards),
+  );
+  const set = accountSummary(s, '2026-09');
+  assert.equal(set.opening, 500);
+  assert.equal(set.balance, 8000 - 3000 - 200);
+  assert.equal(set.available, 500 + 4800);
+  const out = accountSummary(s, '2026-10');
+  assert.equal(out.opening, 5300);           // sobra de setembro vira saldo de outubro
+  assert.equal(out.available, 5300 + 2000 - 200);
+  assert.equal(accountSummary(s, '2026-12').opening, 7100 - 200); // parcela de novembro também desconta
+  assert.equal(accountSummary(s, '2026-08').opening, 500);         // antes de tudo: só o saldo inicial
+});

@@ -11,7 +11,7 @@ App de controle financeiro para usar no celular, instalável na tela inicial (An
   - "recebi 3.500 do projeto da casa dia 12"
 
   O app preenche valor, descrição, categoria, forma de pagamento, cartão, parcelas e data. Você confere antes de salvar.
-- **Receitas, despesas e saldo mensal.**
+- **Receitas, despesas e saldo disponível em conta**: a sobra (ou falta) de cada mês passa para o mês seguinte, a partir de um saldo inicial informado em Ajustes.
 - **Cartões de crédito**: limite, dia de fechamento e vencimento, faturas por mês, compras parceladas e marcação de fatura paga.
 - **Gastos de terceiros**: marque um gasto como de outra pessoa (ou fale "para a Maria"). Ele continua contando como sua despesa e aparece em *A receber de terceiros*, com baixa de pagamento e mensagem de cobrança pronta para WhatsApp.
 - **Categorias personalizáveis**: ícone, cor e palavras-chave (ensinam o app a reconhecer a categoria pela voz/texto).

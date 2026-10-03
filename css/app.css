@@ -426,3 +426,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .btn-sm svg { width: 18px; height: 18px; color: var(--income); }
 .person-tip { display: flex; align-items: center; gap: 4px; margin: 10px 4px 0; }
 .person-tip svg { width: 14px; height: 14px; }
+
+/* Saldo acumulado (disponível em conta) */
+.hero .hero-value { margin-bottom: 2px; }
+.hero-sub { font-size: 12px; opacity: .75; margin-bottom: 14px; }
+.hero-split em { display: block; font-style: normal; font-size: 11px; opacity: .75; line-height: 1.3; margin-top: 2px; }
+.hero-split > div { align-items: flex-start; }
+.pill-ico { flex: none; height: 30px; }
