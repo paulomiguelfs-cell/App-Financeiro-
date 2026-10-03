@@ -1,10 +1,10 @@
 import * as vault from './vault.js';
 import {
-  esc, money, today, monthKey, addMonths, monthLabel, dayLabel, shortDate, parseMoneyInput, formatMoneyInput, uid, round2,
+  capitalize, esc, money, today, monthKey, addMonths, monthLabel, dayLabel, shortDate, parseMoneyInput, formatMoneyInput, uid, round2,
 } from './util.js';
 import {
   emptyState, PALETTE, METHODS, buildTransactions, invoiceFor, currentInvoice, invoiceStatus, invoiceTransactions,
-  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, cardPurchasesInMonth, expenseBreakdown, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
+  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, cardPurchasesInMonth, expenseBreakdown, receivables, knownPeople, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
   lastMonths, normalizeState, toCSV,
 } from './finance.js';
 import { parseEntry } from './parser.js';
@@ -195,7 +195,7 @@ const txRow = (t) => {
   <button class="tx" data-action="edit-tx" data-id="${t.id}">
     <span class="tx-icon" style="--c:${c.color}">${c.icon}</span>
     <span class="tx-main">
-      <span class="tx-title">${esc(t.description || c.name)}${t.installments ? ` <span class="badge">${t.installment}/${t.installments}</span>` : ''}</span>
+      <span class="tx-title">${esc(t.description || c.name)}${t.installments ? ` <span class="badge">${t.installment}/${t.installments}</span>` : ''}${t.owner ? ` <span class="badge owner ${t.reimbursed ? 'paid' : ''}">👤 ${esc(t.owner)}${t.reimbursed ? ' ✓' : ''}</span>` : ''}</span>
       <span class="tx-sub">${esc(c.name)} · ${esc(methodLabel(t))}</span>
     </span>
     <span class="tx-amt ${t.type}">${sign} ${money(t.amount)}</span>
@@ -246,6 +246,8 @@ function viewHome() {
   </form>
 
   ${S.cards.length ? cardPurchasesHTML() : ''}
+
+  ${receivablesHTML()}
 
   ${alerts.length ? `<section class="section">
     <div class="section-head"><h2>Orçamentos</h2></div>
@@ -315,6 +317,89 @@ function openCardPurchasesSheet() {
   });
 }
 
+// Quadro "A receber de terceiros": gastos marcados como de outra pessoa e ainda não pagos.
+function receivablesHTML() {
+  const list = receivables(S);
+  if (!list.length) return '';
+  const now = round2(list.reduce((s, p) => s + p.totalNow, 0));
+  const future = round2(list.reduce((s, p) => s + p.totalFuture, 0));
+  return `<section class="section">
+    <div class="section-head"><h2>A receber de terceiros</h2></div>
+    <div class="panel purchases">
+      <div class="purchases-total"><span class="muted small">Para cobrar agora</span><b>${money(now)}</b>
+        <span class="muted small">${future ? `+ ${money(future)} em parcelas futuras` : `${list.length} pessoa(s)`}</span></div>
+      ${list.map((p) => `<button class="purchase-card" data-action="person" data-name="${esc(p.name)}">
+        <span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span>
+        <span class="grow">${esc(p.name)}<small class="muted"> · ${p.now.length + p.future.length} gasto(s)</small></span>
+        <b>${money(p.totalNow)}</b>${icon.right}</button>`).join('')}
+    </div>
+  </section>`;
+}
+
+function chargeMessage(p) {
+  const line = (t) => `• ${shortDate(t.date)} – ${t.description}${t.installments ? ` (parcela ${t.installment}/${t.installments})` : ''} – ${money(t.amount)}`;
+  return [
+    `Olá, ${p.name}! Segue o resumo dos valores que paguei por você:`,
+    ...p.now.map(line),
+    `Total: ${money(p.totalNow)}`,
+    p.totalFuture ? `(Parcelas futuras: ${money(p.totalFuture)})` : '',
+  ].filter(Boolean).join('\n');
+}
+
+function openPersonSheet(name) {
+  const find = () => receivables(S).find((p) => p.name === name);
+  const itemRow = (t) => {
+    const c = catById(t.categoryId) || { icon: '❔', color: PALETTE[8] };
+    return `<div class="tx">
+      <span class="tx-icon" style="--c:${c.color}">${c.icon}</span>
+      <span class="tx-main"><span class="tx-title">${esc(t.description)}${t.installments ? ` <span class="badge">${t.installment}/${t.installments}</span>` : ''}</span>
+        <span class="tx-sub">${shortDate(t.date)} · ${esc(methodLabel(t))}${t.invoice ? ` · fatura ${monthLabel(t.invoice, false).toLowerCase()}` : ''}</span></span>
+      <span class="tx-amt expense">${money(t.amount)}</span>
+      <button class="btn btn-ghost btn-sm" data-paid="${t.id}" aria-label="Marcar como recebido">${icon.check}</button>
+    </div>`;
+  };
+  const body = () => {
+    const p = find();
+    if (!p) return emptyBox('🎉', 'Tudo recebido', `${esc(name)} não tem valores pendentes.`);
+    return `
+      ${p.now.length ? `<h3 class="group-title">Para cobrar agora · ${money(p.totalNow)}</h3><div class="list">${p.now.map(itemRow).join('')}</div>` : ''}
+      ${p.future.length ? `<h3 class="group-title">Parcelas futuras · ${money(p.totalFuture)}</h3><div class="list">${p.future.map(itemRow).join('')}</div>` : ''}
+      <p class="muted small person-tip">Toque em ${icon.check} quando a pessoa pagar.</p>
+      <div class="sheet-actions">
+        ${p.now.length ? `<button class="btn btn-ghost" data-act="all">${icon.check} Tudo recebido</button>
+        <button class="btn btn-primary grow" data-act="charge">Enviar cobrança</button>` : ''}
+      </div>`;
+  };
+  const sheet = openSheet(`${sheetHead(`👤 ${esc(name)}`, 'Gastos que você pagou por esta pessoa')}<div id="person-body">${body()}</div>`, { className: 'tall' });
+  const refresh = () => { sheet.querySelector('#person-body').innerHTML = body(); render(); };
+  sheet.addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.paid) {
+      const t = S.transactions.find((x) => x.id === b.dataset.paid);
+      if (t) t.reimbursed = true;
+      persist(); refresh();
+      toast('Marcado como recebido');
+    }
+    if (b.dataset.act === 'all') {
+      const p = find();
+      if (!p || !(await confirmDialog('Tudo recebido', `Marcar ${money(p.totalNow)} de ${p.name} como recebido?`, 'Confirmar'))) return;
+      p.now.forEach((t) => { t.reimbursed = true; });
+      persist(); refresh();
+      toast('Valores marcados como recebidos');
+    }
+    if (b.dataset.act === 'charge') {
+      const text = chargeMessage(find());
+      if (navigator.share) {
+        try { await navigator.share({ text }); } catch { /* cancelado */ }
+      } else {
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+      }
+      try { await navigator.clipboard.writeText(text); } catch { /* opcional */ }
+    }
+  });
+}
+
 // ============================================================
 // Lançamentos
 // ============================================================
@@ -323,7 +408,7 @@ function filteredTx() {
   return monthTransactions(S, month)
     .filter((t) => txFilter.type === 'all' || t.type === txFilter.type)
     .filter((t) => !txFilter.categoryId || t.categoryId === txFilter.categoryId)
-    .filter((t) => !q || `${t.description} ${catById(t.categoryId)?.name || ''} ${methodLabel(t)}`.toLowerCase().includes(q))
+    .filter((t) => !q || `${t.description} ${catById(t.categoryId)?.name || ''} ${methodLabel(t)} ${t.owner || ''}`.toLowerCase().includes(q))
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
 }
 
@@ -366,8 +451,12 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
   const editing = !!tx;
   const base = editing
     ? { ...tx }
-    : { type: 'expense', amount: 0, description: '', categoryId: null, method: 'pix', cardId: null, installments: 1, date: today() };
+    : { type: 'expense', amount: 0, description: '', categoryId: null, method: 'pix', cardId: null, installments: 1, date: today(), owner: '' };
+  base.owner = base.owner || '';
+  base.reimbursed = !!base.reimbursed;
   const f = { ...base };
+  const people = knownPeople(S);
+  let ownerInput = !!f.owner && !people.includes(f.owner);
   let listening = false;
 
   const sheet = openSheet(`
@@ -419,6 +508,16 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
           <select id="f-inst">${Array.from({ length: 24 }, (_, i) => i + 1).map((i) => `<option value="${i}" ${i === n ? 'selected' : ''}>${i === 1 ? 'À vista' : `${i}x`}</option>`).join('')}</select>
           <span class="muted small">${n > 1 && f.amount ? `${n}x de ${money(f.amount / n)} · ` : ''}1ª fatura: ${monthLabel(invoiceFor(card, f.date))}</span>
         </div></div>` : ''}
+      ${f.type === 'expense' ? `<div class="field"><span>De quem é este gasto?</span>
+        <div class="chips wrap">
+          <button class="chip ${!f.owner && !ownerInput ? 'on' : ''}" data-owner="">🙋 Meu</button>
+          ${people.map((n) => `<button class="chip ${f.owner === n && !ownerInput ? 'on' : ''}" data-owner="${esc(n)}">👤 ${esc(n)}</button>`).join('')}
+          <button class="chip ${ownerInput ? 'on' : ''}" data-owner-new>+ Outra pessoa</button>
+        </div>
+        ${ownerInput ? `<input id="f-owner" placeholder="Nome da pessoa" autocomplete="off" value="${esc(f.owner)}">` : ''}
+        ${f.owner || ownerInput ? `<p class="muted small">Continua contando como sua despesa e fica em <b>A receber</b> para você cobrar.</p>` : ''}
+        ${editing && f.owner ? `<label class="check"><input type="checkbox" id="f-reimb" ${f.reimbursed ? 'checked' : ''}> Já me pagou</label>` : ''}
+      </div>` : ''}
       <label class="field"><span>Data</span><input id="f-date" type="date" value="${f.date}"></label>`;
   };
   renderForm();
@@ -426,12 +525,14 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
   // Interpretação do texto livre / voz
   const smart = sheet.querySelector('#smart');
   const applyText = (value) => {
-    const r = parseEntry(value, { categories: S.categories, cards: S.cards });
+    const r = parseEntry(value, { categories: S.categories, cards: S.cards, people });
     Object.assign(f, base, { type: r.type, date: r.date, installments: r.installments });
     if (r.amount) f.amount = r.amount;
     if (r.description) f.description = r.description;
     if (r.categoryId) f.categoryId = r.categoryId;
     if (r.method) { f.method = r.method; f.cardId = r.cardId; }
+    if (r.owner) f.owner = r.owner;
+    ownerInput = !!f.owner && !people.includes(f.owner);
     renderForm();
   };
   if (smart) {
@@ -498,11 +599,13 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
   formEl.addEventListener('input', (e) => {
     if (e.target.id === 'f-amount') f.amount = parseMoneyInput(e.target.value);
     if (e.target.id === 'f-desc') f.description = e.target.value;
+    if (e.target.id === 'f-owner') f.owner = e.target.value;
   });
   formEl.addEventListener('change', (e) => {
     if (e.target.id === 'f-date') { f.date = e.target.value || today(); renderForm(); }
     if (e.target.id === 'f-inst') { f.installments = Number(e.target.value); renderForm(); }
     if (e.target.id === 'f-amount') { e.target.value = formatMoneyInput(f.amount); renderForm(); }
+    if (e.target.id === 'f-reimb') f.reimbursed = e.target.checked;
   });
   formEl.addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -511,7 +614,10 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
     if (b.dataset.type) { f.type = b.dataset.type; f.categoryId = null; }
     if (b.dataset.cat) f.categoryId = b.dataset.cat;
     if (b.dataset.method) { f.method = b.dataset.method; f.cardId = b.dataset.card || null; if (f.method !== 'card') f.installments = 1; }
+    if ('owner' in b.dataset) { f.owner = b.dataset.owner; ownerInput = false; }
+    if ('ownerNew' in b.dataset) { f.owner = ''; ownerInput = true; }
     renderForm();
+    if ('ownerNew' in b.dataset) formEl.querySelector('#f-owner')?.focus();
   });
 
   sheet.querySelector('[data-act="save"]').addEventListener('click', () => {
@@ -520,6 +626,8 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
     if (!f.categoryId) f.categoryId = fallbackCategory(f.type).id;
     if (!f.description.trim()) f.description = catById(f.categoryId).name;
     f.description = f.description.trim();
+    f.owner = f.type === 'expense' ? String(f.owner || '').trim().replace(/\s+/g, ' ') : '';
+    if (f.owner) f.owner = people.find((n) => n.toLocaleLowerCase('pt-BR') === f.owner.toLocaleLowerCase('pt-BR')) || capitalize(f.owner);
     let affected;
     if (editing) {
       const card = f.method === 'card' ? cardById(f.cardId) : null;
@@ -527,6 +635,13 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
       Object.assign(tx, {
         type: f.type, amount: round2(f.amount), description: f.description, categoryId: f.categoryId, date: f.date,
         method: f.method, cardId: card ? card.id : null, invoice: card ? (keepInvoice ? tx.invoice : invoiceFor(card, f.date)) : null,
+        reimbursed: f.owner ? f.reimbursed : false,
+      });
+      // O terceiro vale para todas as parcelas da compra; "já me pagou" é por parcela.
+      const group = tx.groupId ? S.transactions.filter((t) => t.groupId === tx.groupId) : [tx];
+      group.forEach((t) => {
+        t.owner = f.owner || null;
+        if (!f.owner) t.reimbursed = false;
       });
       affected = tx;
     } else {
@@ -923,6 +1038,7 @@ function openHelpSheet() {
     ['paguei cento e vinte de farmácia no débito', 'Valores por extenso também funcionam'],
     ['recebi 3.500 do projeto da casa dia 12', 'Receita · Projetos e serviços · dia 12'],
     ['material da obra 1,5 mil na sexta', 'R$ 1.500 · Obra e trabalho · última sexta'],
+    ['almoço 80 no Latam para a Maria', 'Gasto de terceiro: fica em "A receber" para cobrar a Maria'],
   ];
   openSheet(`
     ${sheetHead('Como lançar por texto e voz')}
@@ -949,6 +1065,7 @@ const actions = {
   'tx-cat-clear': () => { txFilter.categoryId = null; render(); },
   'filter-cat': (el) => { txFilter.categoryId = el.dataset.id; txFilter.type = 'all'; go('tx'); },
   'card-purchases': () => openCardPurchasesSheet(),
+  person: (el) => openPersonSheet(el.dataset.name),
   'new-card': () => openCardSheet(),
   'edit-card': (el) => openCardSheet(cardById(el.dataset.id)),
   'open-card': (el) => { cardView = { id: el.dataset.id, invoice: null }; go('card'); },

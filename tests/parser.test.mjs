@@ -85,3 +85,18 @@ test('crédito sem nome usa cartão só quando há um único', () => {
   assert.equal(one.cardId, 'nu');
   assert.equal(catName(one.categoryId), 'Transporte');
 });
+
+test('gasto de terceiro', () => {
+  const people = ['Maria', 'João Pedro'];
+  const Q = (t) => parseEntry(t, { categories, cards, people, now });
+  let r = Q('almoço 80 no nubank para a maria');
+  assert.equal(r.owner, 'Maria');
+  assert.equal(r.description, 'Almoço');
+  assert.equal(r.cardId, 'nu');
+  assert.equal(Q('mercado 120 pix do joão pedro').owner, 'João Pedro');
+  r = Q('Uber 35 pro Carlos');            // nome novo, com inicial maiúscula
+  assert.equal(r.owner, 'Carlos');
+  assert.equal(r.description, 'Uber');
+  assert.equal(Q('material 300 para obra').owner, null);
+  assert.equal(Q('almoço 40 no pix').owner, null);
+});

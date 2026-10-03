@@ -95,3 +95,23 @@ test('despesas do mês = Pix do mês + faturas que vencem no mês', async () => 
   assert.equal(r.total, 160.8);
   assert.equal(r.total, monthSummary(s, '2026-09').expense); // bate com o card de Despesas
 });
+
+test('a receber de terceiros: agora x parcelas futuras', async () => {
+  const { receivables, knownPeople } = await import('../js/finance.js');
+  const s = emptyState('Paulo');
+  s.cards.push(nu);
+  s.transactions.push(
+    ...buildTransactions({ type: 'expense', amount: 80, description: 'Almoço', categoryId: 'c', date: '2026-10-02', method: 'pix', owner: 'Maria' }, s.cards),
+    ...buildTransactions({ type: 'expense', amount: 300, description: 'Tênis', categoryId: 'c', date: '2026-09-02', method: 'card', cardId: 'nu', installments: 3, owner: 'Maria' }, s.cards), // faturas 09,10,11
+    ...buildTransactions({ type: 'expense', amount: 50, description: 'Uber', categoryId: 'c', date: '2026-10-01', method: 'pix', owner: 'João' }, s.cards),
+    ...buildTransactions({ type: 'expense', amount: 999, description: 'Meu', categoryId: 'c', date: '2026-10-01', method: 'pix' }, s.cards),
+  );
+  s.transactions.find((t) => t.description === 'Uber').reimbursed = true;
+  const r = receivables(s, '2026-10');
+  assert.equal(r.length, 1);
+  assert.equal(r[0].name, 'Maria');
+  assert.equal(r[0].totalNow, 280);    // almoço + parcelas de set e out
+  assert.equal(r[0].totalFuture, 100); // parcela de nov
+  assert.deepEqual(knownPeople(s), ['João', 'Maria']);
+  assert.equal(monthSummary(s, '2026-10').expense, 80 + 100 + 50 + 999); // continua sendo despesa sua
+});

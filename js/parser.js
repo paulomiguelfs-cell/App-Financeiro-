@@ -204,11 +204,30 @@ function cleanDescription(orig, norm) {
   return capitalize(o.replace(/[,.;:!?]+$/g, '').replace(/\s{2,}/g, ' ').trim());
 }
 
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Gasto de terceiro: "para a Maria", "pro João", "da Maria" (este último só para nomes já usados).
+// Nomes novos são reconhecidos quando escritos/falados com inicial maiúscula após "para/pra/pro".
+function parseOwner(raw, st, people) {
+  const sorted = [...people].sort((a, b) => b.length - a.length);
+  for (const name of sorted) {
+    const n = escRe(fold(name));
+    const m = take(st, new RegExp(String.raw`\b(?:para|pra|pro|p/)\s+(?:o\s+|a\s+)?${n}\b|\b(?:do|da)\s+${n}\b`));
+    if (m) return name;
+  }
+  const m = /(?:^|\s)(?:para|pra|pro)\s+(?:o\s+|a\s+)?([A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõçà]+)/.exec(raw);
+  if (m && !/^(Mim|Casa|Obra)$/.test(m[1])) {
+    take(st, new RegExp(String.raw`\b(?:para|pra|pro)\s+(?:o\s+|a\s+)?${escRe(fold(m[1]))}\b`));
+    return m[1];
+  }
+  return null;
+}
+
 /**
  * @param {string} text frase digitada ou falada
  * @param {{categories:Array, cards:Array, now?:Date}} ctx
  */
-export function parseEntry(text, { categories = [], cards = [], now = new Date() } = {}) {
+export function parseEntry(text, { categories = [], cards = [], people = [], now = new Date() } = {}) {
   const lower = String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
   // Converte números por extenso antes; fold() preserva o comprimento, então os índices batem.
   const orig = wordsToDigits(lower);
@@ -216,6 +235,7 @@ export function parseEntry(text, { categories = [], cards = [], now = new Date()
 
   const type = detectType(st.norm);
   const categoryNorm = st.norm;
+  const owner = type === 'expense' ? parseOwner(String(text || '').replace(/\s+/g, ' ').trim(), st, people) : null;
   const payment = parsePayment(st, cards);
   const installments = parseInstallments(st);
   const date = parseDate(st, now);
@@ -233,6 +253,7 @@ export function parseEntry(text, { categories = [], cards = [], now = new Date()
     cardId: payment ? payment.cardId || null : null,
     installments,
     date,
+    owner,
   };
 }
 

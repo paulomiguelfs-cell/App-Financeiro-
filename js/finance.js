@@ -114,6 +114,8 @@ export function buildTransactions(input, cards) {
       installment: n > 1 ? i + 1 : null,
       installments: n > 1 ? n : null,
       total: n > 1 ? total : null,
+      owner: input.owner ? String(input.owner).trim() : null, // gasto de terceiro (para cobrar)
+      reimbursed: false,
       createdAt: Date.now(),
     });
   }
@@ -191,6 +193,27 @@ export function budgetStatus(state, key) {
     .sort((a, b) => b.pct - a.pct);
 }
 
+// ---------- Gastos de terceiros ----------
+export const knownPeople = (state) =>
+  [...new Set(state.transactions.filter((t) => t.owner).map((t) => t.owner))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+// Pendências por pessoa. "now" = já lançado até o mês atual; "future" = parcelas de meses seguintes.
+export function receivables(state, currentKey = monthKey(new Date())) {
+  const map = new Map();
+  for (const t of state.transactions) {
+    if (!t.owner || t.reimbursed || t.type !== 'expense') continue;
+    const key = t.owner.toLocaleLowerCase('pt-BR');
+    if (!map.has(key)) map.set(key, { name: t.owner, now: [], future: [], totalNow: 0, totalFuture: 0 });
+    const p = map.get(key);
+    if (txMonth(t) <= currentKey) { p.now.push(t); p.totalNow += t.amount; } else { p.future.push(t); p.totalFuture += t.amount; }
+  }
+  const byDate = (a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt;
+  return [...map.values()]
+    .map((p) => ({ ...p, now: p.now.sort(byDate), future: p.future.sort(byDate),
+      totalNow: round2(p.totalNow), totalFuture: round2(p.totalFuture), total: round2(p.totalNow + p.totalFuture) }))
+    .sort((a, b) => b.totalNow - a.totalNow || b.total - a.total);
+}
+
 export function lastMonths(state, key, count = 6) {
   const out = [];
   for (let i = count - 1; i >= 0; i--) {
@@ -219,12 +242,13 @@ export function toCSV(state) {
   const cats = new Map(state.categories.map((c) => [c.id, c.name]));
   const cards = new Map(state.cards.map((c) => [c.id, c.name]));
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['Data', 'Tipo', 'Descrição', 'Categoria', 'Pagamento', 'Cartão', 'Fatura', 'Parcela', 'Valor']];
+  const rows = [['Data', 'Tipo', 'Descrição', 'Categoria', 'Pagamento', 'Cartão', 'Fatura', 'Parcela', 'Terceiro', 'Reembolsado', 'Valor']];
   for (const t of [...state.transactions].sort((a, b) => a.date.localeCompare(b.date))) {
     rows.push([
       t.date, t.type === 'income' ? 'Receita' : 'Despesa', t.description, cats.get(t.categoryId) || '',
       METHODS[t.method]?.label || '', cards.get(t.cardId) || '', t.invoice || '',
       t.installments ? `${t.installment}/${t.installments}` : '',
+      t.owner || '', t.owner ? (t.reimbursed ? 'Sim' : 'Não') : '',
       (t.type === 'income' ? t.amount : -t.amount).toFixed(2).replace('.', ','),
     ]);
   }

@@ -414,3 +414,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .hero-break span { display: inline-flex; align-items: center; gap: 8px; opacity: .9; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hero-break b { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .hero-break i { width: 14px; height: 10px; border-radius: 3px; background: var(--card); box-shadow: 0 0 0 1px rgba(255, 255, 255, .5); flex: none; }
+
+/* Gastos de terceiros */
+.badge.owner { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.badge.owner.paid { background: color-mix(in srgb, var(--income) 15%, transparent); color: var(--income); }
+.avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 700; font-size: 13px;
+  background: var(--accent-soft); color: var(--accent); }
+.check { display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 6px 0; }
+.check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.btn-sm { padding: 8px; border-radius: 10px; flex: none; }
+.btn-sm svg { width: 18px; height: 18px; color: var(--income); }
+.person-tip { display: flex; align-items: center; gap: 4px; margin: 10px 4px 0; }
+.person-tip svg { width: 14px; height: 14px; }
