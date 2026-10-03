@@ -4,7 +4,7 @@ import {
 } from './util.js';
 import {
   emptyState, PALETTE, METHODS, buildTransactions, invoiceFor, currentInvoice, invoiceStatus, invoiceTransactions,
-  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, cardPurchasesInMonth, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
+  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, cardPurchasesInMonth, expenseBreakdown, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
   lastMonths, normalizeState, toCSV,
 } from './finance.js';
 import { parseEntry } from './parser.js';
@@ -228,6 +228,15 @@ function viewHome() {
       <div><span class="pill-ico income">${icon.up}</span><span><small>Receitas</small><b>${money(sum.income)}</b></span></div>
       <div><span class="pill-ico expense">${icon.down}</span><span><small>Despesas</small><b>${money(sum.expense)}</b></span></div>
     </div>
+    ${S.cards.length ? (() => {
+      const br = expenseBreakdown(S, month);
+      return `<div class="hero-break">
+        <p class="hero-break-title">Despesas de ${monthLabel(month, false).toLowerCase()} =</p>
+        <div><span>⚡ Pix, débito e dinheiro</span><b>${money(br.direct)}</b></div>
+        ${br.invoices.map((x) => `<div><span><i style="--card:${x.card.color}"></i>Fatura ${esc(x.card.name)}</span><b>${money(x.value)}</b></div>`).join('')}
+        ${br.invoices.length ? '' : `<div><span>💳 Faturas que vencem no mês</span><b>${money(0)}</b></div>`}
+      </div>`;
+    })() : ''}
   </section>
 
   <form class="quick" data-form="quick">

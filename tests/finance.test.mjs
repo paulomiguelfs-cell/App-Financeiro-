@@ -77,3 +77,21 @@ test('compras no cartão feitas no mês (pela data da compra)', async () => {
   assert.deepEqual(r.byCard.map((x) => [x.card.id, x.count, x.value]), [['nu', 1, 300], ['lt', 1, 10.8]]);
   assert.equal(cardPurchasesInMonth(s, '2026-10').total, 0); // parcelas seguintes não contam como compra nova
 });
+
+test('despesas do mês = Pix do mês + faturas que vencem no mês', async () => {
+  const { expenseBreakdown } = await import('../js/finance.js');
+  const s = emptyState('Paulo');
+  const latam = { id: 'lt', name: 'Latam Black', closingDay: 20, dueDay: 28, limit: 50000 };
+  s.cards.push(latam, nu);
+  s.transactions.push(
+    ...buildTransactions({ type: 'expense', amount: 10.8, description: 'Café', categoryId: 'c', date: '2026-09-10', method: 'card', cardId: 'lt' }, s.cards), // fatura 09
+    ...buildTransactions({ type: 'expense', amount: 300, description: 'Tênis', categoryId: 'c', date: '2026-08-20', method: 'card', cardId: 'nu', installments: 3 }, s.cards), // 100 na fatura 09
+    ...buildTransactions({ type: 'expense', amount: 50, description: 'Mercado', categoryId: 'c', date: '2026-09-29', method: 'pix' }, s.cards),
+    ...buildTransactions({ type: 'expense', amount: 99, description: 'Jantar', categoryId: 'c', date: '2026-09-25', method: 'card', cardId: 'lt' }, s.cards), // fatura 10
+  );
+  const r = expenseBreakdown(s, '2026-09');
+  assert.equal(r.direct, 50);
+  assert.deepEqual(r.invoices.map((x) => [x.card.id, x.value]), [['lt', 10.8], ['nu', 100]]);
+  assert.equal(r.total, 160.8);
+  assert.equal(r.total, monthSummary(s, '2026-09').expense); // bate com o card de Despesas
+});

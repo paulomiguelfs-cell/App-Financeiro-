@@ -152,6 +152,21 @@ export function monthSummary(state, key) {
   return { income: round2(income), expense: round2(expense), balance: round2(income - expense) };
 }
 
+// Composição das despesas do mês: gastos à vista (Pix, débito, dinheiro) pela data
+// + faturas dos cartões que vencem no mês.
+export function expenseBreakdown(state, key) {
+  const direct = round2(state.transactions
+    .filter((t) => t.type === 'expense' && t.method !== 'card' && monthKey(t.date) === key)
+    .reduce((s, t) => s + t.amount, 0));
+  const invoices = state.cards
+    .map((card) => ({ card, value: round2(state.transactions
+      .filter((t) => t.type === 'expense' && t.method === 'card' && t.cardId === card.id && t.invoice === key)
+      .reduce((s, t) => s + t.amount, 0)) }))
+    .filter((r) => r.value > 0);
+  const invoicesTotal = round2(invoices.reduce((s, r) => s + r.value, 0));
+  return { direct, invoices, invoicesTotal, total: round2(direct + invoicesTotal) };
+}
+
 export function expensesByCategory(state, key) {
   const map = new Map();
   for (const t of monthTransactions(state, key)) {
