@@ -36,8 +36,8 @@ function commit() {
 // ---------- Tema ----------
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f5f1e8' : '#11100d');
-  try { localStorage.setItem('fin.theme', theme); } catch { /* opcional */ }
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#efe3c8' : '#11100d');
+  try { localStorage.setItem('fin.theme2', theme); } catch { /* opcional */ }
 }
 
 // ---------- Helpers de dados ----------
@@ -116,7 +116,7 @@ function renderLock() {
 }
 
 function enterApp() {
-  applyTheme(S.settings.theme || 'dark');
+  applyTheme(S.settings.theme || 'light');
   view = 'home';
   month = monthKey(new Date());
   render();
@@ -898,8 +898,8 @@ function viewSettings() {
   <section class="panel settings">
     <h2>Aparência</h2>
     <div class="seg">
+      <button class="${S.settings.theme === 'light' ? 'on' : ''}" data-action="theme" data-theme="light">Dourado</button>
       <button class="${S.settings.theme !== 'light' ? 'on' : ''}" data-action="theme" data-theme="dark">Escuro</button>
-      <button class="${S.settings.theme === 'light' ? 'on' : ''}" data-action="theme" data-theme="light">Claro</button>
     </div>
   </section>
   <section class="panel settings">
@@ -1149,7 +1149,7 @@ document.addEventListener('change', async (e) => {
 });
 
 // ---------- Início ----------
-applyTheme((() => { try { return localStorage.getItem('fin.theme') || 'dark'; } catch { return 'dark'; } })());
+applyTheme((() => { try { return localStorage.getItem('fin.theme2') || 'light'; } catch { return 'light'; } })());
 if (!window.isSecureContext || !crypto?.subtle) {
   app.innerHTML = `<div class="auth"><div class="brand"><div class="logo">${icon.alert}</div><h1>${APP_NAME}</h1>
     <p class="muted">Abra o app por um endereço seguro (https) para proteger seus dados.</p></div></div>`;

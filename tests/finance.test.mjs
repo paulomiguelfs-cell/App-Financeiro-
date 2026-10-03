@@ -137,3 +137,12 @@ test('saldo do mês passa para os meses seguintes (disponível em conta)', async
   assert.equal(accountSummary(s, '2026-12').opening, 7100 - 200); // parcela de novembro também desconta
   assert.equal(accountSummary(s, '2026-08').opening, 500);         // antes de tudo: só o saldo inicial
 });
+
+test('visual v2: backups e dados antigos passam para o fundo dourado (tema claro)', async () => {
+  const { normalizeState } = await import('../js/finance.js');
+  const antigo = { categories: [], transactions: [], settings: { name: 'Paulo', theme: 'dark' } };
+  assert.equal(normalizeState(antigo).settings.theme, 'light');
+  const escolheuEscuro = { categories: [], transactions: [], settings: { theme: 'dark', themeV: 2 } };
+  assert.equal(normalizeState(escolheuEscuro).settings.theme, 'dark'); // respeita escolha feita depois
+  assert.equal(emptyState('P').settings.theme, 'light');
+});

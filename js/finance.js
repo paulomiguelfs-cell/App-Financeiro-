@@ -32,7 +32,7 @@ export function defaultCategories() {
 export function emptyState(name = '') {
   return {
     version: 1,
-    settings: { name, theme: 'dark', lockMinutes: 3, initialBalance: 0 },
+    settings: { name, theme: 'light', themeV: 2, lockMinutes: 3, initialBalance: 0 },
     categories: defaultCategories(),
     cards: [],
     transactions: [],
@@ -241,6 +241,13 @@ export function lastMonths(state, key, count = 6) {
   return out;
 }
 
+// Versão 2 do visual: o fundo padrão passou a ser dourado claro (tema 'light').
+function migrateSettings(settings = {}) {
+  const out = { name: '', theme: 'light', lockMinutes: 3, initialBalance: 0, ...settings };
+  if (out.themeV !== 2) { out.theme = 'light'; out.themeV = 2; }
+  return out;
+}
+
 // Garante estrutura válida ao importar um backup.
 export function normalizeState(s) {
   if (!s || !Array.isArray(s.transactions) || !Array.isArray(s.categories)) {
@@ -248,7 +255,7 @@ export function normalizeState(s) {
   }
   return {
     version: 1,
-    settings: { name: '', theme: 'dark', lockMinutes: 3, initialBalance: 0, ...(s.settings || {}) },
+    settings: migrateSettings(s.settings),
     categories: s.categories,
     cards: Array.isArray(s.cards) ? s.cards : [],
     transactions: s.transactions,

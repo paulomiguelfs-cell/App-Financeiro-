@@ -27,23 +27,24 @@
   --safe-t: env(safe-area-inset-top, 0px);
 }
 :root[data-theme="light"] {
+  /* Fundo dourado claro com destaques em verde escuro */
   color-scheme: light;
-  --bg: #f5f1e8;
-  --surface: #fffdf8;
-  --surface-2: #f1ebdf;
-  --surface-3: #e7dfcf;
-  --line: #e3dac8;
-  --text: #1d1b16;
-  --text-2: #5f584b;
-  --text-3: #8f8775;
-  --accent: #8f6f32;
-  --accent-soft: rgba(143, 111, 50, .12);
+  --bg: #efe3c8;
+  --surface: #faf4e6;
+  --surface-2: #f3e8d0;
+  --surface-3: #e7d7b6;
+  --line: #dccaa5;
+  --text: #2a2418;
+  --text-2: #65583f;
+  --text-3: #94846a;
+  --accent: #82622a;
+  --accent-soft: rgba(130, 98, 42, .13);
   --income: #1f7a52;
-  --expense: #c2513f;
-  --warn: #b7791f;
-  --bar-income: #1baf7a;
-  --bar-expense: #e34948;
-  --shadow: 0 8px 24px rgba(20, 22, 26, .08);
+  --expense: #b94a38;
+  --warn: #a8701b;
+  --bar-income: #1f8a5e;
+  --bar-expense: #d24a3f;
+  --shadow: 0 8px 24px rgba(90, 70, 30, .12);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
