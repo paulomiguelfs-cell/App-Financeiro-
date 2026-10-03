@@ -36,7 +36,7 @@ function commit() {
 // ---------- Tema ----------
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f5f6f8' : '#0e0f12');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#f5f1e8' : '#11100d');
   try { localStorage.setItem('fin.theme', theme); } catch { /* opcional */ }
 }
 

@@ -1,6 +1,6 @@
 // Service worker: mantém o app disponível offline.
 // Ao publicar uma nova versão, altere VERSION para forçar a atualização.
-const VERSION = 'v1.0.7';
+const VERSION = 'v1.1.0';
 const CACHE = `financas-${VERSION}`;
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
