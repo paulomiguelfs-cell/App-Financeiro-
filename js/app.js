@@ -13,6 +13,7 @@ import { donut, incomeExpenseBars, attachTooltips } from './charts.js';
 import { icon, openSheet, closeAllSheets, sheetHead, toast, choose, confirmDialog, download } from './ui.js';
 
 const APP_NAME = 'Minhas Finanças';
+const APP_VERSION = '1.3.1';
 const app = document.getElementById('app');
 
 let S = null;                 // estado descriptografado (só em memória)
@@ -99,6 +100,7 @@ function renderLock() {
     btn.disabled = true; btn.textContent = 'Verificando…';
     try {
       S = normalizeState(await vault.unlock(new FormData(form).get('p')));
+      persist(); // grava ajustes de versões anteriores (ex.: baixas antigas convertidas em receita)
       enterApp();
     } catch {
       btn.disabled = false; btn.textContent = 'Entrar';
@@ -996,7 +998,7 @@ function viewSettings() {
     <h2>Zona de perigo</h2>
     <button class="set-row danger" data-action="wipe">${icon.trash}<span>Apagar todos os dados</span></button>
   </section>
-  <p class="muted small center">${APP_NAME} · v1.0 · dados criptografados no aparelho</p>`;
+  <p class="muted small center">${APP_NAME} · versão ${APP_VERSION} · dados criptografados no aparelho</p>`;
 }
 
 function openCategoriesSheet() {
@@ -1234,6 +1236,24 @@ if (!window.isSecureContext || !crypto?.subtle) {
   renderSetup();
 }
 
+// Atualização automática: quando uma versão nova é publicada, o app recarrega sozinho
+// (só se não houver nenhum formulário aberto, para não perder o que está sendo digitado).
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('./sw.js').then((reg) => {
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+    setInterval(check, 30 * 60 * 1000);
+  }).catch(() => {});
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', async () => {
+    if (!hadController || reloading) return;
+    const reload = async () => {
+      if (document.querySelector('.sheet-wrap')) return setTimeout(reload, 5000);
+      reloading = true;
+      await saving;
+      location.reload();
+    };
+    reload();
+  });
 }

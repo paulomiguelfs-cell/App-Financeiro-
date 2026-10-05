@@ -1,6 +1,6 @@
 // Service worker: mantém o app disponível offline.
 // Ao publicar uma nova versão, altere VERSION para forçar a atualização.
-const VERSION = 'v1.3.0';
+const VERSION = 'v1.3.1';
 const CACHE = `financas-${VERSION}`;
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
@@ -9,7 +9,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -22,7 +22,8 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    // no-cache: sempre confere com o servidor se há versão nova (evita usar arquivo antigo do cache do navegador)
+    fetch(e.request, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));

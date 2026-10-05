@@ -188,3 +188,25 @@ test('recebimento de terceiro vira receita e abate a dívida', async () => {
   assert.equal(r.total, 0);
   assert.equal(r.credit, 70);
 });
+
+test('baixas da versão antiga viram receita ao abrir o app', async () => {
+  const { normalizeState, receivables, accountSummary } = await import('../js/finance.js');
+  const s = emptyState('Paulo');
+  s.transactions.push(
+    ...buildTransactions({ type: 'expense', amount: 80, description: 'Almoço', categoryId: 'c', date: '2026-10-02', method: 'pix', owner: 'Mãe' }, []),
+    ...buildTransactions({ type: 'expense', amount: 120, description: 'Farmácia', categoryId: 'c', date: '2026-10-03', method: 'pix', owner: 'Mãe' }, []),
+    ...buildTransactions({ type: 'expense', amount: 40, description: 'Uber', categoryId: 'c', date: '2026-10-03', method: 'pix', owner: 'Mãe' }, []),
+  );
+  s.transactions[0].reimbursed = true; // marcado como pago na versão antiga
+  s.transactions[1].reimbursed = true;
+  const m = normalizeState(JSON.parse(JSON.stringify(s)));
+  const receitas = m.transactions.filter((t) => t.type === 'income');
+  assert.equal(receitas.length, 1);
+  assert.equal(receitas[0].amount, 200);
+  assert.equal(receitas[0].fromPerson, 'Mãe');
+  const today = new Date().toISOString().slice(0, 7);
+  assert.equal(accountSummary(m, receitas[0].date.slice(0, 7)).income, 200);
+  assert.equal(receivables(m, today)[0].totalNow, 40); // só o Uber continua em aberto
+  // abrir de novo não duplica
+  assert.equal(normalizeState(m).transactions.filter((t) => t.type === 'income').length, 1);
+});

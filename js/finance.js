@@ -321,6 +321,26 @@ function migrateSettings(settings = {}) {
   return out;
 }
 
+// Versões antigas só marcavam o gasto como pago ("reimbursed"), sem gerar receita.
+// Converte essas baixas em recebimentos (uma receita por pessoa, na data de hoje).
+export function migrateLegacyReimbursed(state, date = toISO(new Date())) {
+  const byPerson = new Map();
+  for (const t of state.transactions) {
+    if (t.type !== 'expense' || !t.owner || !t.reimbursed) continue;
+    const k = t.owner.toLocaleLowerCase('pt-BR');
+    if (!byPerson.has(k)) byPerson.set(k, { name: t.owner, items: [] });
+    byPerson.get(k).items.push(t);
+  }
+  let created = 0;
+  for (const { name, items } of byPerson.values()) {
+    const amount = round2(items.reduce((s, t) => s + t.amount, 0));
+    items.forEach((t) => { t.reimbursed = false; });
+    state.transactions.push(buildReceipt(state, { person: name, amount, date, appliesTo: items.map((t) => t.id) }));
+    created++;
+  }
+  return created;
+}
+
 // Garante estrutura válida ao importar um backup.
 export function normalizeState(s) {
   if (!s || !Array.isArray(s.transactions) || !Array.isArray(s.categories)) {
@@ -335,6 +355,7 @@ export function normalizeState(s) {
     paidInvoices: s.paidInvoices || {},
   };
   ensureReimburseCategory(state);
+  migrateLegacyReimbursed(state);
   return state;
 }
 
