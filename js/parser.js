@@ -145,7 +145,7 @@ function parseInstallments(st) {
 }
 
 const EXPENSE_VERBS = /\b(gastei|paguei|comprei|pagar|gasto|compra|despesa|abasteci|torrei)\b/;
-const INCOME_VERBS = /\b(recebi|ganhei|entrou|entrada|caiu|receita|recebimento|vendi|faturei|rendeu)\b/;
+const INCOME_VERBS = /\b(recebi|ganhei|entrou|entrada|caiu|receita|recebimento|vendi|faturei|rendeu|me pagou|me devolveu|devolveu|me mandou|me transferiu)\b/;
 
 function detectType(norm) {
   if (EXPENSE_VERBS.test(norm)) return 'expense';
@@ -185,7 +185,7 @@ function parseCategory(norm, categories, type) {
   return best;
 }
 
-const LEADING = /^(?:(?:eu|hoje|ai|entao|anota|anotar|lanca|lancar|registra|registrar|adiciona|adicionar|gastei|paguei|comprei|recebi|ganhei|entrou|caiu|foi|foram|uma?|o|a|os|as|de|do|da|dos|das|no|na|nos|nas|em|com|pelo|pela|por|para|pra|pro|e|um|valor|reais|real|despesa|receita|compra|gasto)\s+)+/;
+const LEADING = /^(?:(?:eu|hoje|ai|entao|anota|anotar|lanca|lancar|registra|registrar|adiciona|adicionar|gastei|paguei|comprei|recebi|ganhei|entrou|caiu|foi|foram|uma?|o|a|os|as|de|do|da|dos|das|no|na|nos|nas|em|com|pelo|pela|por|para|pra|pro|e|um|valor|reais|real|despesa|receita|compra|gasto)(?:\s+|$))+/;
 const TRAILING = /(?:\s+(?:de|do|da|dos|das|no|na|nos|nas|em|com|pelo|pela|por|para|pra|pro|e|o|a|um|uma|reais|real|hoje|valor|foi))+$/;
 
 function cleanDescription(orig, norm) {
@@ -223,6 +223,17 @@ function parseOwner(raw, st, people) {
   return null;
 }
 
+// Recebimento de alguém que te devia: "recebi 200 da Mãe", "o João me pagou 50" (só nomes já usados).
+function parseFromPerson(st, people) {
+  const sorted = [...people].sort((a, b) => b.length - a.length);
+  for (const name of sorted) {
+    const n = escRe(fold(name));
+    const m = take(st, new RegExp(String.raw`\b(?:da|do|de|pela|pelo)\s+(?:minha\s+|meu\s+)?${n}\b|(?:^|\s)(?:a|o)?\s*${n}\b(?=\s+(?:me\s+)?(?:pagou|devolveu|mandou|transferiu|fez))`));
+    if (m) return name;
+  }
+  return null;
+}
+
 /**
  * @param {string} text frase digitada ou falada
  * @param {{categories:Array, cards:Array, now?:Date}} ctx
@@ -236,6 +247,7 @@ export function parseEntry(text, { categories = [], cards = [], people = [], now
   const type = detectType(st.norm);
   const categoryNorm = st.norm;
   const owner = type === 'expense' ? parseOwner(String(text || '').replace(/\s+/g, ' ').trim(), st, people) : null;
+  const fromPerson = type === 'income' ? parseFromPerson(st, people) : null;
   const payment = parsePayment(st, cards);
   const installments = parseInstallments(st);
   const date = parseDate(st, now);
@@ -254,6 +266,7 @@ export function parseEntry(text, { categories = [], cards = [], people = [], now
     installments,
     date,
     owner,
+    fromPerson,
   };
 }
 

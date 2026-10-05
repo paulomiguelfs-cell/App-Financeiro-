@@ -100,3 +100,20 @@ test('gasto de terceiro', () => {
   assert.equal(Q('material 300 para obra').owner, null);
   assert.equal(Q('almoço 40 no pix').owner, null);
 });
+
+test('recebimento de terceiro por texto/voz', () => {
+  const people = ['Mãe', 'João'];
+  const Q = (t) => parseEntry(t, { categories, cards, people, now });
+  let r = Q('recebi 200 da mãe no pix');
+  assert.equal(r.type, 'income');
+  assert.equal(r.amount, 200);
+  assert.equal(r.fromPerson, 'Mãe');
+  assert.equal(r.description, '');
+  r = Q('o João me pagou 50');
+  assert.equal(r.type, 'income');
+  assert.equal(r.fromPerson, 'João');
+  assert.equal(r.amount, 50);
+  assert.equal(Q('recebi 3500 do projeto').fromPerson, null);
+  assert.equal(Q('almoço 80 pra mãe').fromPerson, null); // despesa: é gasto de terceiro, não recebimento
+  assert.equal(Q('almoço 80 pra mãe').owner, 'Mãe');
+});

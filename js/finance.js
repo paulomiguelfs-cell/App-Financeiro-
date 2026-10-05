@@ -25,7 +25,8 @@ export function defaultCategories() {
     cat('Salário', '💼', PALETTE[2], 'income', ['salário', 'salario', 'pagamento', 'pró-labore', 'prolabore', 'adiantamento']),
     cat('Projetos e serviços', '📐', PALETTE[0], 'income', ['projeto', 'obra', 'consultoria', 'laudo', 'honorário', 'honorários', 'cliente', 'medição', 'vistoria', 'serviço', 'orçamento']),
     cat('Rendimentos', '📈', PALETTE[5], 'income', ['rendimento', 'rendeu', 'juros', 'dividendo', 'dividendos', 'investimento', 'cdb', 'tesouro']),
-    cat('Outras receitas', '💰', PALETTE[8], 'income', ['pix recebido', 'reembolso', 'venda', 'vendi', 'presente']),
+    cat('Reembolsos', '↩️', PALETTE[2], 'income', ['reembolso', 'me pagou', 'devolveu', 'acerto']),
+    cat('Outras receitas', '💰', PALETTE[8], 'income', ['pix recebido', 'venda', 'vendi', 'presente']),
   ];
 }
 
@@ -116,6 +117,8 @@ export function buildTransactions(input, cards) {
       total: n > 1 ? total : null,
       owner: input.owner ? String(input.owner).trim() : null, // gasto de terceiro (para cobrar)
       reimbursed: false,
+      fromPerson: input.type === 'income' && input.fromPerson ? String(input.fromPerson).trim() : null, // recebimento de terceiro
+      appliesTo: null,
       createdAt: Date.now(),
     });
   }
@@ -212,24 +215,94 @@ export function budgetStatus(state, key) {
 }
 
 // ---------- Gastos de terceiros ----------
-export const knownPeople = (state) =>
-  [...new Set(state.transactions.filter((t) => t.owner).map((t) => t.owner))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+const personKey = (n) => String(n || '').trim().toLocaleLowerCase('pt-BR');
 
-// Pendências por pessoa. "now" = já lançado até o mês atual; "future" = parcelas de meses seguintes.
-export function receivables(state, currentKey = monthKey(new Date())) {
+export const knownPeople = (state) => {
   const map = new Map();
   for (const t of state.transactions) {
-    if (!t.owner || t.reimbursed || t.type !== 'expense') continue;
-    const key = t.owner.toLocaleLowerCase('pt-BR');
-    if (!map.has(key)) map.set(key, { name: t.owner, now: [], future: [], totalNow: 0, totalFuture: 0 });
-    const p = map.get(key);
-    if (txMonth(t) <= currentKey) { p.now.push(t); p.totalNow += t.amount; } else { p.future.push(t); p.totalFuture += t.amount; }
+    const n = t.owner || t.fromPerson;
+    if (n && !map.has(personKey(n))) map.set(personKey(n), n);
   }
-  const byDate = (a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt;
-  return [...map.values()]
-    .map((p) => ({ ...p, now: p.now.sort(byDate), future: p.future.sort(byDate),
-      totalNow: round2(p.totalNow), totalFuture: round2(p.totalFuture), total: round2(p.totalNow + p.totalFuture) }))
-    .sort((a, b) => b.totalNow - a.totalNow || b.total - a.total);
+  return [...map.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+};
+
+export const REIMBURSE_CATEGORY = 'Reembolsos';
+
+// Garante a categoria de receita usada para os valores recebidos de terceiros.
+export function ensureReimburseCategory(state) {
+  let c = state.categories.find((x) => x.type === 'income' && x.name === REIMBURSE_CATEGORY);
+  if (!c) {
+    c = { id: uid(), name: REIMBURSE_CATEGORY, icon: '↩️', color: PALETTE[2], type: 'income', keywords: ['reembolso', 'me pagou', 'devolveu', 'acerto'], budget: null };
+    state.categories.push(c);
+  }
+  return c;
+}
+
+// Cria a receita de um valor recebido de alguém que te devia.
+// appliesTo: ids dos gastos quitados por este recebimento (vazio = abate dos mais antigos).
+export function buildReceipt(state, { person, amount, date, method = 'pix', appliesTo = null, description = '' }) {
+  const cat = ensureReimburseCategory(state);
+  return {
+    id: uid(), type: 'income', amount: round2(amount), description: description || `Recebido de ${person}`,
+    categoryId: cat.id, date, method, cardId: null, invoice: null, groupId: null, installment: null, installments: null,
+    total: null, owner: null, reimbursed: false, fromPerson: person, appliesTo: appliesTo && appliesTo.length ? appliesTo : null,
+    createdAt: Date.now(),
+  };
+}
+
+// Situação por pessoa: o que ela deve (agora e parcelas futuras), quanto já pagou e o saldo a favor.
+// Os recebimentos (receitas com fromPerson) abatem primeiro os gastos indicados em appliesTo
+// e depois os gastos mais antigos. Gastos com o antigo "reimbursed" marcado contam como pagos.
+export function receivables(state, currentKey = monthKey(new Date())) {
+  const people = new Map();
+  const get = (name) => {
+    const k = personKey(name);
+    if (!people.has(k)) people.set(k, { name, items: [], receipts: [] });
+    return people.get(k);
+  };
+  for (const t of state.transactions) {
+    if (t.type === 'expense' && t.owner) get(t.owner).items.push(t);
+    if (t.type === 'income' && t.fromPerson) get(t.fromPerson).receipts.push(t);
+  }
+  const order = (a, b) => txMonth(a).localeCompare(txMonth(b)) || a.date.localeCompare(b.date) || a.createdAt - b.createdAt;
+  const out = [];
+  for (const p of people.values()) {
+    p.items.sort(order);
+    const paid = new Map(p.items.map((t) => [t.id, t.reimbursed ? t.amount : 0]));
+    const openOf = (t) => round2(t.amount - paid.get(t.id));
+    let pool = 0;
+    for (const r of p.receipts) {
+      let left = r.amount;
+      for (const id of r.appliesTo || []) {
+        const t = p.items.find((x) => x.id === id);
+        if (!t || left <= 0) continue;
+        const use = Math.min(left, openOf(t));
+        if (use > 0) { paid.set(t.id, paid.get(t.id) + use); left -= use; }
+      }
+      pool += left;
+    }
+    for (const t of p.items) {
+      if (pool <= 0.004) break;
+      const use = Math.min(pool, openOf(t));
+      if (use > 0) { paid.set(t.id, paid.get(t.id) + use); pool -= use; }
+    }
+    const now = [], future = [];
+    let totalNow = 0, totalFuture = 0;
+    for (const t of p.items) {
+      const open = openOf(t);
+      if (open <= 0.004) continue;
+      const row = { tx: t, open, partial: open < t.amount - 0.004 };
+      if (txMonth(t) <= currentKey) { now.push(row); totalNow += open; } else { future.push(row); totalFuture += open; }
+    }
+    const received = round2(p.receipts.reduce((s, r) => s + r.amount, 0));
+    const credit = round2(pool);
+    if (!now.length && !future.length && credit <= 0) continue;
+    out.push({
+      name: p.name, now, future, receipts: p.receipts.sort((a, b) => b.date.localeCompare(a.date)),
+      totalNow: round2(totalNow), totalFuture: round2(totalFuture), total: round2(totalNow + totalFuture), received, credit,
+    });
+  }
+  return out.sort((a, b) => b.totalNow - a.totalNow || b.total - a.total);
 }
 
 export function lastMonths(state, key, count = 6) {
@@ -253,7 +326,7 @@ export function normalizeState(s) {
   if (!s || !Array.isArray(s.transactions) || !Array.isArray(s.categories)) {
     throw new Error('Arquivo de backup inválido');
   }
-  return {
+  const state = {
     version: 1,
     settings: migrateSettings(s.settings),
     categories: s.categories,
@@ -261,6 +334,8 @@ export function normalizeState(s) {
     transactions: s.transactions,
     paidInvoices: s.paidInvoices || {},
   };
+  ensureReimburseCategory(state);
+  return state;
 }
 
 export function toCSV(state) {

@@ -13,7 +13,7 @@ App de controle financeiro para usar no celular, instalável na tela inicial (An
   O app preenche valor, descrição, categoria, forma de pagamento, cartão, parcelas e data. Você confere antes de salvar.
 - **Receitas, despesas e saldo disponível em conta**: a sobra (ou falta) de cada mês passa para o mês seguinte, a partir de um saldo inicial informado em Ajustes.
 - **Cartões de crédito**: limite, dia de fechamento e vencimento, faturas por mês, compras parceladas e marcação de fatura paga.
-- **Gastos de terceiros**: marque um gasto como de outra pessoa (ou fale "para a Maria"). Ele continua contando como sua despesa e aparece em *A receber de terceiros*, com baixa de pagamento e mensagem de cobrança pronta para WhatsApp.
+- **Gastos de terceiros**: marque um gasto como de outra pessoa (ou fale "para a Maria"). Ele continua contando como sua despesa e aparece em *A receber de terceiros*, com mensagem de cobrança pronta para WhatsApp. Cada valor recebido ("recebi 200 da Maria", baixa de um gasto ou pagamento parcial) entra como **receita** na categoria Reembolsos e abate a dívida, começando pelos gastos mais antigos.
 - **Categorias personalizáveis**: ícone, cor e palavras-chave (ensinam o app a reconhecer a categoria pela voz/texto).
 - **Orçamento por categoria**, com alertas em 80% e 100%.
 - **Relatórios**: despesas por categoria, receitas × despesas dos últimos 6 meses e gastos por forma de pagamento.

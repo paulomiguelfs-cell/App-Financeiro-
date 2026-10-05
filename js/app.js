@@ -4,7 +4,7 @@ import {
 } from './util.js';
 import {
   emptyState, PALETTE, METHODS, buildTransactions, invoiceFor, currentInvoice, invoiceStatus, invoiceTransactions,
-  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, cardPurchasesInMonth, expenseBreakdown, receivables, knownPeople, accountSummary, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
+  invoiceTotal, cardUsed, toggleInvoicePaid, txMonth, cardPurchasesInMonth, expenseBreakdown, receivables, knownPeople, accountSummary, buildReceipt, ensureReimburseCategory, monthTransactions, monthSummary, expensesByCategory, budgetStatus,
   lastMonths, normalizeState, toCSV,
 } from './finance.js';
 import { parseEntry } from './parser.js';
@@ -195,7 +195,7 @@ const txRow = (t) => {
   <button class="tx" data-action="edit-tx" data-id="${t.id}">
     <span class="tx-icon" style="--c:${c.color}">${c.icon}</span>
     <span class="tx-main">
-      <span class="tx-title">${esc(t.description || c.name)}${t.installments ? ` <span class="badge">${t.installment}/${t.installments}</span>` : ''}${t.owner ? ` <span class="badge owner ${t.reimbursed ? 'paid' : ''}">👤 ${esc(t.owner)}${t.reimbursed ? ' ✓' : ''}</span>` : ''}</span>
+      <span class="tx-title">${esc(t.description || c.name)}${t.installments ? ` <span class="badge">${t.installment}/${t.installments}</span>` : ''}${t.owner ? ` <span class="badge owner ${t.reimbursed ? 'paid' : ''}">👤 ${esc(t.owner)}${t.reimbursed ? ' ✓' : ''}</span>` : ''}${t.fromPerson && !t.description.includes(t.fromPerson) ? ` <span class="badge owner paid">↩ ${esc(t.fromPerson)}</span>` : ''}</span>
       <span class="tx-sub">${esc(c.name)} · ${esc(methodLabel(t))}</span>
     </span>
     <span class="tx-amt ${t.type}">${sign} ${money(t.amount)}</span>
@@ -333,14 +333,14 @@ function receivablesHTML() {
         <span class="muted small">${future ? `+ ${money(future)} em parcelas futuras` : `${list.length} pessoa(s)`}</span></div>
       ${list.map((p) => `<button class="purchase-card" data-action="person" data-name="${esc(p.name)}">
         <span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span>
-        <span class="grow">${esc(p.name)}<small class="muted"> · ${p.now.length + p.future.length} gasto(s)</small></span>
+        <span class="grow">${esc(p.name)}<small class="muted"> · ${p.credit > 0 && !p.total ? `crédito de ${money(p.credit)}` : `${p.now.length + p.future.length} gasto(s) em aberto`}</small></span>
         <b>${money(p.totalNow)}</b>${icon.right}</button>`).join('')}
     </div>
   </section>`;
 }
 
 function chargeMessage(p) {
-  const line = (t) => `• ${shortDate(t.date)} – ${t.description}${t.installments ? ` (parcela ${t.installment}/${t.installments})` : ''} – ${money(t.amount)}`;
+  const line = ({ tx: t, open, partial }) => `• ${shortDate(t.date)} – ${t.description}${t.installments ? ` (parcela ${t.installment}/${t.installments})` : ''} – ${money(open)}${partial ? ' (restante)' : ''}`;
   return [
     `Olá, ${p.name}! Segue o resumo dos valores que paguei por você:`,
     ...p.now.map(line),
@@ -349,47 +349,103 @@ function chargeMessage(p) {
   ].filter(Boolean).join('\n');
 }
 
+// Registra um recebimento: vira receita (categoria Reembolsos) e abate a dívida da pessoa.
+function registerReceipt(person, amount, opts = {}) {
+  const r = buildReceipt(S, { person, amount, date: opts.date || today(), method: opts.method || 'pix', appliesTo: opts.appliesTo });
+  S.transactions.push(r);
+  commit();
+  toast(`${money(r.amount)} recebido de ${person} · lançado em Receitas`);
+}
+
+function openReceiptForm(name, suggested, onDone) {
+  const f = { amount: suggested || 0, date: today(), method: 'pix' };
+  const sheet = openSheet(`
+    ${sheetHead('Registrar recebimento', `Valor que ${esc(name)} te pagou`)}
+    <form class="form">
+      <label class="field amount-field"><span>Valor recebido</span>
+        <div class="amount-wrap"><span>R$</span><input name="amount" inputmode="decimal" placeholder="0,00" value="${formatMoneyInput(f.amount)}"></div></label>
+      <div class="field"><span>Recebido via</span><div class="chips wrap">
+        ${[['pix', '⚡ Pix'], ['debit', '🏦 Conta'], ['cash', '💵 Dinheiro']].map(([m, l]) => `<button type="button" class="chip ${m === f.method ? 'on' : ''}" data-m="${m}">${l}</button>`).join('')}
+      </div></div>
+      <label class="field"><span>Data</span><input name="date" type="date" value="${f.date}"></label>
+      <p class="muted small">Entra como <b>receita</b> do mês e abate primeiro os gastos mais antigos. Pode ser um valor parcial.</p>
+      <div class="sheet-actions"><button class="btn btn-primary btn-lg grow" type="submit">${icon.check} Registrar</button></div>
+    </form>`);
+  sheet.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-m]');
+    if (!b) return;
+    f.method = b.dataset.m;
+    sheet.querySelectorAll('[data-m]').forEach((x) => x.classList.toggle('on', x === b));
+  });
+  sheet.querySelector('form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const amount = parseMoneyInput(fd.get('amount'));
+    if (!(amount > 0)) return toast('Informe o valor recebido', 'error');
+    sheet.close();
+    registerReceipt(name, amount, { date: fd.get('date') || today(), method: f.method });
+    onDone?.();
+  });
+}
+
 function openPersonSheet(name) {
   const find = () => receivables(S).find((p) => p.name === name);
-  const itemRow = (t) => {
+  const itemRow = ({ tx: t, open, partial }) => {
     const c = catById(t.categoryId) || { icon: '❔', color: PALETTE[8] };
     return `<div class="tx">
       <span class="tx-icon" style="--c:${c.color}">${c.icon}</span>
       <span class="tx-main"><span class="tx-title">${esc(t.description)}${t.installments ? ` <span class="badge">${t.installment}/${t.installments}</span>` : ''}</span>
         <span class="tx-sub">${shortDate(t.date)} · ${esc(methodLabel(t))}${t.invoice ? ` · fatura ${monthLabel(t.invoice, false).toLowerCase()}` : ''}</span></span>
-      <span class="tx-amt expense">${money(t.amount)}</span>
-      <button class="btn btn-ghost btn-sm" data-paid="${t.id}" aria-label="Marcar como recebido">${icon.check}</button>
+      <span class="tx-amt expense">${money(open)}${partial ? `<small class="muted block">de ${money(t.amount)}</small>` : ''}</span>
+      <button class="btn btn-ghost btn-sm" data-paid="${t.id}" data-open="${open}" aria-label="Recebido">${icon.check}</button>
     </div>`;
   };
   const body = () => {
     const p = find();
     if (!p) return emptyBox('🎉', 'Tudo recebido', `${esc(name)} não tem valores pendentes.`);
     return `
-      ${p.now.length ? `<h3 class="group-title">Para cobrar agora · ${money(p.totalNow)}</h3><div class="list">${p.now.map(itemRow).join('')}</div>` : ''}
-      ${p.future.length ? `<h3 class="group-title">Parcelas futuras · ${money(p.totalFuture)}</h3><div class="list">${p.future.map(itemRow).join('')}</div>` : ''}
-      <p class="muted small person-tip">Toque em ${icon.check} quando a pessoa pagar.</p>
-      <div class="sheet-actions">
+      <div class="person-summary">
+        <div><small>Para cobrar agora</small><b>${money(p.totalNow)}</b></div>
+        <div><small>Já recebido</small><b class="pos">${money(p.received)}</b></div>
+        ${p.totalFuture ? `<div><small>Parcelas futuras</small><b>${money(p.totalFuture)}</b></div>` : ''}
+        ${p.credit > 0 ? `<div><small>Crédito (pagou a mais)</small><b class="pos">${money(p.credit)}</b></div>` : ''}
+      </div>
+      ${p.now.length ? `<h3 class="group-title">Para cobrar agora</h3><div class="list">${p.now.map(itemRow).join('')}</div>` : ''}
+      ${p.future.length ? `<h3 class="group-title">Parcelas futuras</h3><div class="list">${p.future.map(itemRow).join('')}</div>` : ''}
+      <p class="muted small person-tip">Toque em ${icon.check} para dar baixa em um gasto. O valor entra como receita.</p>
+      ${p.receipts.length ? `<h3 class="group-title">Recebimentos</h3><div class="list">${p.receipts.slice(0, 6).map((r) => `
+        <button class="tx" data-receipt="${r.id}"><span class="tx-icon" style="--c:${PALETTE[2]}">↩️</span>
+          <span class="tx-main"><span class="tx-title">${esc(r.description)}</span><span class="tx-sub">${shortDate(r.date)} · ${esc(methodLabel(r))}</span></span>
+          <span class="tx-amt income">+ ${money(r.amount)}</span></button>`).join('')}</div>` : ''}
+      <div class="sheet-actions wrap-actions">
+        <button class="btn btn-primary grow" data-act="receive">${icon.plus} Registrar recebimento</button>
         ${p.now.length ? `<button class="btn btn-ghost" data-act="all">${icon.check} Tudo recebido</button>
-        <button class="btn btn-primary grow" data-act="charge">Enviar cobrança</button>` : ''}
+        <button class="btn btn-ghost" data-act="charge">Enviar cobrança</button>` : ''}
       </div>`;
   };
   const sheet = openSheet(`${sheetHead(`👤 ${esc(name)}`, 'Gastos que você pagou por esta pessoa')}<div id="person-body">${body()}</div>`, { className: 'tall' });
-  const refresh = () => { sheet.querySelector('#person-body').innerHTML = body(); render(); };
+  const refresh = () => { if (sheet.isConnected) sheet.querySelector('#person-body').innerHTML = body(); };
   sheet.addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.paid) {
-      const t = S.transactions.find((x) => x.id === b.dataset.paid);
-      if (t) t.reimbursed = true;
-      persist(); refresh();
-      toast('Marcado como recebido');
+      registerReceipt(name, Number(b.dataset.open), { appliesTo: [b.dataset.paid] });
+      refresh();
+    }
+    if (b.dataset.receipt) {
+      const t = S.transactions.find((x) => x.id === b.dataset.receipt);
+      sheet.close();
+      if (t) openTxSheet({ tx: t });
+    }
+    if (b.dataset.act === 'receive') {
+      const p = find();
+      openReceiptForm(name, p ? p.totalNow || p.total : 0, refresh);
     }
     if (b.dataset.act === 'all') {
       const p = find();
-      if (!p || !(await confirmDialog('Tudo recebido', `Marcar ${money(p.totalNow)} de ${p.name} como recebido?`, 'Confirmar'))) return;
-      p.now.forEach((t) => { t.reimbursed = true; });
-      persist(); refresh();
-      toast('Valores marcados como recebidos');
+      if (!p || !(await confirmDialog('Tudo recebido', `Registrar ${money(p.totalNow)} recebidos de ${p.name}? O valor entra como receita.`, 'Confirmar'))) return;
+      registerReceipt(name, p.totalNow, { appliesTo: p.now.map((x) => x.tx.id) });
+      refresh();
     }
     if (b.dataset.act === 'charge') {
       const text = chargeMessage(find());
@@ -411,7 +467,7 @@ function filteredTx() {
   return monthTransactions(S, month)
     .filter((t) => txFilter.type === 'all' || t.type === txFilter.type)
     .filter((t) => !txFilter.categoryId || t.categoryId === txFilter.categoryId)
-    .filter((t) => !q || `${t.description} ${catById(t.categoryId)?.name || ''} ${methodLabel(t)} ${t.owner || ''}`.toLowerCase().includes(q))
+    .filter((t) => !q || `${t.description} ${catById(t.categoryId)?.name || ''} ${methodLabel(t)} ${t.owner || ''} ${t.fromPerson || ''}`.toLowerCase().includes(q))
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
 }
 
@@ -456,6 +512,7 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
     ? { ...tx }
     : { type: 'expense', amount: 0, description: '', categoryId: null, method: 'pix', cardId: null, installments: 1, date: today(), owner: '' };
   base.owner = base.owner || '';
+  base.fromPerson = base.fromPerson || '';
   base.reimbursed = !!base.reimbursed;
   const f = { ...base };
   const people = knownPeople(S);
@@ -519,7 +576,13 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
         </div>
         ${ownerInput ? `<input id="f-owner" placeholder="Nome da pessoa" autocomplete="off" value="${esc(f.owner)}">` : ''}
         ${f.owner || ownerInput ? `<p class="muted small">Continua contando como sua despesa e fica em <b>A receber</b> para você cobrar.</p>` : ''}
-        ${editing && f.owner ? `<label class="check"><input type="checkbox" id="f-reimb" ${f.reimbursed ? 'checked' : ''}> Já me pagou</label>` : ''}
+      </div>` : ''}
+      ${f.type === 'income' && people.length ? `<div class="field"><span>É pagamento de alguém que te devia?</span>
+        <div class="chips wrap">
+          <button class="chip ${!f.fromPerson ? 'on' : ''}" data-from="">Não</button>
+          ${people.map((n) => `<button class="chip ${f.fromPerson === n ? 'on' : ''}" data-from="${esc(n)}">↩ ${esc(n)}</button>`).join('')}
+        </div>
+        ${f.fromPerson ? '<p class="muted small">Entra como receita e abate o que a pessoa te deve em <b>A receber</b>.</p>' : ''}
       </div>` : ''}
       <label class="field"><span>Data</span><input id="f-date" type="date" value="${f.date}"></label>`;
   };
@@ -535,6 +598,11 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
     if (r.categoryId) f.categoryId = r.categoryId;
     if (r.method) { f.method = r.method; f.cardId = r.cardId; }
     if (r.owner) f.owner = r.owner;
+    if (r.fromPerson) {
+      f.fromPerson = r.fromPerson;
+      if (!r.categoryId) f.categoryId = ensureReimburseCategory(S).id;
+      if (!r.description) f.description = `Recebido de ${r.fromPerson}`;
+    }
     ownerInput = !!f.owner && !people.includes(f.owner);
     renderForm();
   };
@@ -608,7 +676,6 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
     if (e.target.id === 'f-date') { f.date = e.target.value || today(); renderForm(); }
     if (e.target.id === 'f-inst') { f.installments = Number(e.target.value); renderForm(); }
     if (e.target.id === 'f-amount') { e.target.value = formatMoneyInput(f.amount); renderForm(); }
-    if (e.target.id === 'f-reimb') f.reimbursed = e.target.checked;
   });
   formEl.addEventListener('click', (e) => {
     const b = e.target.closest('button');
@@ -618,6 +685,11 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
     if (b.dataset.cat) f.categoryId = b.dataset.cat;
     if (b.dataset.method) { f.method = b.dataset.method; f.cardId = b.dataset.card || null; if (f.method !== 'card') f.installments = 1; }
     if ('owner' in b.dataset) { f.owner = b.dataset.owner; ownerInput = false; }
+    if ('from' in b.dataset) {
+      f.fromPerson = b.dataset.from;
+      if (f.fromPerson && !f.categoryId) f.categoryId = ensureReimburseCategory(S).id;
+      if (f.fromPerson && !f.description.trim()) f.description = `Recebido de ${f.fromPerson}`;
+    }
     if ('ownerNew' in b.dataset) { f.owner = ''; ownerInput = true; }
     renderForm();
     if ('ownerNew' in b.dataset) formEl.querySelector('#f-owner')?.focus();
@@ -630,6 +702,7 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
     if (!f.description.trim()) f.description = catById(f.categoryId).name;
     f.description = f.description.trim();
     f.owner = f.type === 'expense' ? String(f.owner || '').trim().replace(/\s+/g, ' ') : '';
+    f.fromPerson = f.type === 'income' ? f.fromPerson || '' : '';
     if (f.owner) f.owner = people.find((n) => n.toLocaleLowerCase('pt-BR') === f.owner.toLocaleLowerCase('pt-BR')) || capitalize(f.owner);
     let affected;
     if (editing) {
@@ -639,6 +712,8 @@ function openTxSheet({ tx = null, text = '', voice = false } = {}) {
         type: f.type, amount: round2(f.amount), description: f.description, categoryId: f.categoryId, date: f.date,
         method: f.method, cardId: card ? card.id : null, invoice: card ? (keepInvoice ? tx.invoice : invoiceFor(card, f.date)) : null,
         reimbursed: f.owner ? f.reimbursed : false,
+        fromPerson: f.fromPerson || null,
+        appliesTo: f.fromPerson && f.fromPerson === tx.fromPerson ? tx.appliesTo || null : null,
       });
       // O terceiro vale para todas as parcelas da compra; "já me pagou" é por parcela.
       const group = tx.groupId ? S.transactions.filter((t) => t.groupId === tx.groupId) : [tx];

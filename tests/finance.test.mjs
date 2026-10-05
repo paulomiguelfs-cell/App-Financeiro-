@@ -146,3 +146,45 @@ test('visual v2: backups e dados antigos passam para o fundo dourado (tema claro
   assert.equal(normalizeState(escolheuEscuro).settings.theme, 'dark'); // respeita escolha feita depois
   assert.equal(emptyState('P').settings.theme, 'light');
 });
+
+test('recebimento de terceiro vira receita e abate a dívida', async () => {
+  const { receivables, buildReceipt, accountSummary } = await import('../js/finance.js');
+  const s = emptyState('Paulo');
+  s.cards.push(nu);
+  s.transactions.push(
+    ...buildTransactions({ type: 'expense', amount: 80, description: 'Almoço', categoryId: 'c', date: '2026-10-02', method: 'pix', owner: 'Mãe' }, s.cards),
+    ...buildTransactions({ type: 'expense', amount: 200, description: 'Remédio', categoryId: 'c', date: '2026-10-03', method: 'pix', owner: 'Mãe' }, s.cards),
+    ...buildTransactions({ type: 'expense', amount: 300, description: 'Tênis', categoryId: 'c', date: '2026-09-02', method: 'card', cardId: 'nu', installments: 3, owner: 'Mãe' }, s.cards), // 09,10,11
+  );
+  let r = receivables(s, '2026-10')[0];
+  assert.equal(r.totalNow, 480);
+  assert.equal(r.totalFuture, 100);
+
+  // Pagamento parcial de R$ 150: quita a parcela de set (100) e abate 50 do Almoço (80), o mais antigo de out
+  s.transactions.push(buildReceipt(s, { person: 'Mãe', amount: 150, date: '2026-10-05' }));
+  r = receivables(s, '2026-10')[0];
+  assert.equal(r.totalNow, 330);
+  assert.equal(r.received, 150);
+  const parcial = r.now.find((x) => x.partial);
+  assert.equal(parcial.tx.description, 'Almoço');
+  assert.equal(parcial.open, 30);
+
+  // Baixa de um item específico (Remédio)
+  const remedio = s.transactions.find((t) => t.description === 'Remédio');
+  s.transactions.push(buildReceipt(s, { person: 'Mãe', amount: 200, date: '2026-10-05', appliesTo: [remedio.id] }));
+  r = receivables(s, '2026-10')[0];
+  assert.equal(r.totalNow, 130);
+  assert.ok(!r.now.some((x) => x.tx.id === remedio.id));
+
+  // Recebimentos entram como receita do mês
+  const out = accountSummary(s, '2026-10');
+  assert.equal(out.income, 350);
+  const cat = s.categories.find((c) => c.id === s.transactions.at(-1).categoryId);
+  assert.equal(cat.name, 'Reembolsos');
+
+  // Pagou além do que devia: sobra como crédito
+  s.transactions.push(buildReceipt(s, { person: 'Mãe', amount: 300, date: '2026-10-05' }));
+  r = receivables(s, '2026-10')[0];
+  assert.equal(r.total, 0);
+  assert.equal(r.credit, 70);
+});
